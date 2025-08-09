@@ -1,2 +1,4 @@
 # dhf-streamlit-app
-Automatic DHF Generation for Medical Devices
+
+pip install -r requirements.txt
+streamlit run app.py
