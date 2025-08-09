@@ -107,11 +107,18 @@ def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
     return GoogleDrive(gauth)
 
 
-def drive_upload_bytes(drive: GoogleDrive, folder_id: str, filename: str, data: bytes) -> str:
-    file = drive.CreateFile({"title": filename, "parents": [{"id": folder_id}]})
-    file.content = io.BytesIO(data)
-    file.Upload()
-    return file["id"]
+import uuid, tempfile, os  # add uuid/tempfile at top
+
+def drive_upload_bytes(drive, folder_id, filename, data: bytes) -> str:
+    gfile = drive.CreateFile({"title": filename, "parents": [{"id": folder_id}]})
+    tmp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{filename}")
+    with open(tmp_path, "wb") as f:
+        f.write(data)
+    gfile.SetContentFile(tmp_path)
+    gfile.Upload()
+    os.remove(tmp_path)
+    return gfile["id"]
+
 
 
 def drive_download_jsonl_by_name(drive: GoogleDrive, folder_id: str, name: str) -> t.Optional[pd.DataFrame]:
@@ -269,9 +276,11 @@ def llm_validate_rows(tm_df: pd.DataFrame, max_rows: int = 50) -> pd.DataFrame:
     for i, row in sample.iterrows():
         row_json = json.dumps(row.to_dict(), ensure_ascii=False)
         prompt = f"""You are validating a medical device Traceability Matrix row for an infusion pump.
-Return a compact JSON with keys: issues (list of strings) and suggestions (object mapping column->string).
-Row: {row_json}
-Rules: Ensure Verification Method is appropriate for the requirement, Acceptance Criteria are measurable and testable, and HA Risk Control(s) align with Risks to Health. If a field is NA/TBD, suggest a concise improvement. Respond with ONLY JSON."""
+        Return a compact JSON with keys: issues (list of strings) and suggestions (object mapping column->string).
+        Row: {row_json}
+        Rules: Ensure Verification Method is appropriate for the requirement, Acceptance Criteria are measurable and testable, and HA Risk Control(s) align with Risks to Health. If a field is NA/TBD, suggest a concise improvement. Respond with ONLY JSON."""
+
+       
         try:
             resp = openai.chat.completions.create(
                 model=st.secrets.get("OPENAI_MODEL", "gpt-4o-mini"),
@@ -340,7 +349,6 @@ with st.sidebar:
     out_dir_input = st.text_input("Output dir", value=OUTPUT_DIR)
     if out_dir_input:
         os.makedirs(out_dir_input, exist_ok=True)
-        global OUTPUT_DIR
         OUTPUT_DIR = out_dir_input
 
 st.subheader("1) Provide Product Requirements")
@@ -349,8 +357,7 @@ with col1:
     st.write("**Option A:** Upload Excel/JSONL in the sidebar (recommended).")
 with col2:
     st.write("**Option B:** Paste requirements as CSV-like text.")
-    sample = "Requirement ID,Verification ID,Requirements
-REQ-001,VER-001,The pump shall ..."
+    sample = "Requirement ID,Verification ID,Requirements\nREQ-001,VER-001,The pump shall ..."
     pasted_text = st.text_area("Paste requirements (CSV headers required)", value="", height=150, placeholder=sample)
 
 run_btn = st.button("▶️ Run Pipeline & Validate", type="primary")
