@@ -267,26 +267,32 @@ def llm_validate_rows(tm_df: pd.DataFrame, max_rows: int = 50) -> pd.DataFrame:
     flagged = []
     sample = tm_df.head(max_rows)
     for i, row in sample.iterrows():
-        prompt = (
-            "You are validating a medical device Traceability Matrix row for an infusion pump.
-"
-            "Return a JSON with keys: issues (list of strings) and suggestions (object mapping column->string).
-"
-            f"Row: {json.dumps(row.to_dict(), ensure_ascii=False)}
-"
-            "Rules: Ensure Verification Method is appropriate for the requirement, Acceptance Criteria are measurable,
-"
-            "and HA Risk Control(s) align with Risks to Health. If NA/TBD, suggest a concise improvement."
-        )
+        row_json = json.dumps(row.to_dict(), ensure_ascii=False)
+        prompt = f"""You are validating a medical device Traceability Matrix row for an infusion pump.
+Return a compact JSON with keys: issues (list of strings) and suggestions (object mapping column->string).
+Row: {row_json}
+Rules: Ensure Verification Method is appropriate for the requirement, Acceptance Criteria are measurable and testable, and HA Risk Control(s) align with Risks to Health. If a field is NA/TBD, suggest a concise improvement. Respond with ONLY JSON."""
         try:
-            resp = openai.chat.completions.create(model=st.secrets.get("OPENAI_MODEL", "gpt-4o-mini"),
-                                                  messages=[{"role":"system","content":"You are a strict validator."},
-                                                            {"role":"user","content":prompt}],
-                                                  temperature=0.0)
-            text = resp.choices[0].message.content
-            data = json.loads(text) if text.strip().startswith("{") else {"issues": [text], "suggestions": {}}
+            resp = openai.chat.completions.create(
+                model=st.secrets.get("OPENAI_MODEL", "gpt-4o-mini"),
+                messages=[
+                    {"role": "system", "content": "You are a strict validator for medical device documentation."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0.0,
+            )
+            text = resp.choices[0].message.content or "{}"
+            try:
+                data = json.loads(text)
+            except Exception:
+                data = {"issues": [text], "suggestions": {}}
             for issue in data.get("issues", []):
-                flagged.append({"row_index": i, "column": "*", "issue": issue, "suggestion": data.get("suggestions", {})})
+                flagged.append({
+                    "row_index": i,
+                    "column": "*",
+                    "issue": issue,
+                    "suggestion": data.get("suggestions", {}),
+                })
         except Exception as e:
             flagged.append({"row_index": i, "column": "*", "issue": f"LLM error: {e}", "suggestion": {}})
     return pd.DataFrame(flagged)
