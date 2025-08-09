@@ -72,44 +72,49 @@ TBD = "TBD - Human / SME input"
 # ------------------------------
 # Google Drive API helpers (for Streamlit Cloud persistence)
 # ------------------------------
+# --- Google Drive (pydrive2) init ---
+import tempfile, uuid  # at top of file if not already
 
 def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
     """Initialize Drive using Streamlit secrets.
-    Secrets expected (set in Streamlit Cloud > App secrets):
-      - GDRIVE_CLIENT_CONFIG (JSON for OAuth client config) OR SERVICE_ACCOUNT_JSON
-      - GDRIVE_CREDENTIALS (stored credentials JSON, optional; refreshed on runtime)  
-    Prefer service account for server-to-server.
-    """
+    Preferred: SERVICE_ACCOUNT_JSON (full JSON). Fallback: GDRIVE_CLIENT_CONFIG (OAuth)."""
     if not _HAS_PYDRIVE2:
         return None
+
     gauth = GoogleAuth()
-    # Service account path from secrets (writes to a temp file)
-    svc_json = st.secrets.get("SERVICE_ACCOUNT_JSON", None)
-    client_cfg = st.secrets.get("GDRIVE_CLIENT_CONFIG", None)
+
+    svc_json = st.secrets.get("SERVICE_ACCOUNT_JSON")
+    client_cfg = st.secrets.get("GDRIVE_CLIENT_CONFIG")
 
     if svc_json:
-        svc_path = os.path.join(".secrets", "svc.json")
+        # Write the JSON to a temp file and configure pydrive2 for service auth
         os.makedirs(".secrets", exist_ok=True)
+        svc_path = os.path.join(".secrets", "svc.json")
         with open(svc_path, "w", encoding="utf-8") as f:
             f.write(svc_json)
-        gauth.LoadServiceConfig()
-        gauth.ServiceAuth(svc_path)
+
+        # Correct way for service accounts in pydrive2
+        gauth.settings["client_config_backend"] = "service"
+        gauth.settings["service_config"] = {"client_json_file_path": svc_path}
+        gauth.ServiceAuth()
+
     elif client_cfg:
-        cfg_path = os.path.join(".secrets", "client_secrets.json")
+        # OAuth client (interactive) — not ideal for Streamlit Cloud
         os.makedirs(".secrets", exist_ok=True)
+        cfg_path = os.path.join(".secrets", "client_secrets.json")
         with open(cfg_path, "w", encoding="utf-8") as f:
             f.write(client_cfg)
         gauth.LoadClientConfigFile(cfg_path)
-        gauth.LocalWebserverAuth()  # first run requires manual auth
+        gauth.LocalWebserverAuth()
+
     else:
         return None
 
     return GoogleDrive(gauth)
 
-
 import uuid, tempfile, os  # add uuid/tempfile at top
 
-def drive_upload_bytes(drive, folder_id, filename, data: bytes) -> str:
+def drive_upload_bytes(drive: GoogleDrive, folder_id: str, filename: str, data: bytes) -> str:
     gfile = drive.CreateFile({"title": filename, "parents": [{"id": folder_id}]})
     tmp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{filename}")
     with open(tmp_path, "wb") as f:
@@ -118,8 +123,6 @@ def drive_upload_bytes(drive, folder_id, filename, data: bytes) -> str:
     gfile.Upload()
     os.remove(tmp_path)
     return gfile["id"]
-
-
 
 def drive_download_jsonl_by_name(drive: GoogleDrive, folder_id: str, name: str) -> t.Optional[pd.DataFrame]:
     q = f"title = '{name}' and '{folder_id}' in parents and trashed = false"
