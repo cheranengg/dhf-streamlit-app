@@ -75,9 +75,8 @@ TBD = "TBD - Human / SME input"
 # --- Google Drive (pydrive2) init ---
 import tempfile, uuid  # at top of file if not already
 
+# --- Google Drive (pydrive2) init ---
 def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
-    """Initialize Drive using Streamlit secrets.
-    Preferred: SERVICE_ACCOUNT_JSON (full JSON). Fallback: GDRIVE_CLIENT_CONFIG (OAuth)."""
     if not _HAS_PYDRIVE2:
         return None
 
@@ -87,30 +86,26 @@ def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
     client_cfg = st.secrets.get("GDRIVE_CLIENT_CONFIG")
 
     if svc_json:
-        # Write the JSON to a temp file and configure pydrive2 for service auth
         os.makedirs(".secrets", exist_ok=True)
         svc_path = os.path.join(".secrets", "svc.json")
         with open(svc_path, "w", encoding="utf-8") as f:
             f.write(svc_json)
 
-        # Correct way for service accounts in pydrive2
-        gauth.settings["client_config_backend"] = "service"
-        gauth.settings["service_config"] = {"client_json_file_path": svc_path}
-        gauth.ServiceAuth()
+        # ✅ Easiest, no delegation needed
+        gauth.LoadServiceAccountCredentials(svc_path)
+        gauth.Authorize()
+        return GoogleDrive(gauth)
 
     elif client_cfg:
-        # OAuth client (interactive) — not ideal for Streamlit Cloud
         os.makedirs(".secrets", exist_ok=True)
         cfg_path = os.path.join(".secrets", "client_secrets.json")
         with open(cfg_path, "w", encoding="utf-8") as f:
             f.write(client_cfg)
         gauth.LoadClientConfigFile(cfg_path)
         gauth.LocalWebserverAuth()
+        return GoogleDrive(gauth)
 
-    else:
-        return None
-
-    return GoogleDrive(gauth)
+    return None
 
 import uuid, tempfile, os  # add uuid/tempfile at top
 
