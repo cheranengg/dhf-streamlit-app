@@ -1,0 +1,10 @@
+[browser]
+gatherUsageStats = false
+
+[server]
+maxUploadSize = 200
+enableXsrfProtection = true
+
+[theme]
+base = "light"
+primaryColor = "#2E7D32"
