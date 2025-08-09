@@ -84,7 +84,7 @@ def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
         return None
     gauth = GoogleAuth()
     # Service account path from secrets (writes to a temp file)
-    svc_json = st.secrets.get("dhfremediation-7f3fc2a2ee09.json", None)
+    svc_json = st.secrets.get("SERVICE_ACCOUNT_JSON", None)
     client_cfg = st.secrets.get("GDRIVE_CLIENT_CONFIG", None)
 
     if svc_json:
