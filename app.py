@@ -91,9 +91,13 @@ def init_drive_from_secrets() -> t.Optional[GoogleDrive]:
         with open(svc_path, "w", encoding="utf-8") as f:
             f.write(svc_json)
 
-        # ✅ Easiest, no delegation needed
-        gauth.LoadServiceAccountCredentials(svc_path)
-        gauth.Authorize()
+        # ✅ Correct pydrive2 config for service accounts (no domain delegation)
+        gauth.settings["client_config_backend"] = "service"
+        gauth.settings["service_config"] = {
+            "client_json_file_path": svc_path,
+            "client_user_email": None,  # important: prevents 'Missing: client_user_email'
+        }
+        gauth.ServiceAuth()  # authorize
         return GoogleDrive(gauth)
 
     elif client_cfg:
